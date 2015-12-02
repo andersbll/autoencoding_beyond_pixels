@@ -4,7 +4,7 @@ import cudarray as ca
 import deeppy as dp
 import deeppy.expr as expr
 
-from vaegan import KLDivergence, NegativeGradient, SquareError
+from vaegan import KLDivergence, NegativeGradient, ScaleGradient, SquareError, WeightedParameter
 
 
 class AppendSpatially(expr.base.Binary):
@@ -45,21 +45,30 @@ class ConditionalSequential(expr.Sequential):
         return x
 
 
-class ConditionalVAEGAN(dp.base.Model):
+class ConditionalVAEGAN(dp.base.Model, dp.base.CollectionMixin):
     def __init__(self, encoder, sampler, generator, discriminator, mode,
-                 reconstruct_error=None):
+                 reconstruct_error=None, vae_grad_scale=1.0):
         self.encoder = encoder
         self.sampler = sampler
-        self.generator = generator
         self.mode = mode
         self.discriminator = discriminator
+        self.vae_grad_scale = vae_grad_scale
         self.eps = 1e-4
         if reconstruct_error is None:
             reconstruct_error = SquareError()
         self.reconstruct_error = reconstruct_error
+        generator.params = [p.parent if isinstance(p, WeightedParameter) else p
+                            for p in generator.params]
         if self.mode == 'vaegan':
+            generator.params = [WeightedParameter(p, vae_grad_scale)
+                                for p in generator.params]
             self.generator_neg = deepcopy(generator)
             self.generator_neg.params = [p.share() for p in generator.params]
+        if self.mode == 'gan':
+            generator.params = [WeightedParameter(p, -1.0)
+                                for p in generator.params]
+        self.generator = generator
+        self.collection = [self.encoder, self.sampler, self.generator, self.discriminator]
 
     def _embed_expr(self, x, y):
         h_enc = self.encoder(x, y)
@@ -81,24 +90,20 @@ class ConditionalVAEGAN(dp.base.Model):
             z, z_mu, z_log_sigma, z_eps = self.sampler(h_enc)
             self.kld = KLDivergence()(z_mu, z_log_sigma)
             x_tilde = self.generator(z, self.y_src)
-#            if self.mode == 'vaegan':
-#                x_tilde = ScaleGradient()(x_tilde)
             self.logpxz = self.reconstruct_error(x_tilde, self.x_src)
-            loss = self.kld + expr.sum(self.logpxz)
+            loss = 0.5*self.kld + expr.sum(self.logpxz)
 
         if self.mode in ['gan', 'vaegan']:
             y = self.y_src
             if self.mode == 'gan':
                 z = self.sampler.samples()
                 x_tilde = self.generator(z, y)
-                x_tilde = NegativeGradient()(x_tilde)
                 gen_size = batch_size
             elif self.mode == 'vaegan':
-                z = NegativeGradient()(z)
+                z = ScaleGradient(0.0)(z)
                 z = expr.Concatenate(axis=0)(z, z_eps)
                 y = expr.Concatenate(axis=0)(y, self.y_src)
                 x_tilde = self.generator_neg(z, y)
-                x_tilde = NegativeGradient()(x_tilde)
                 gen_size = batch_size*2
             x = expr.Concatenate(axis=0)(self.x_src, x_tilde)
             y = expr.Concatenate(axis=0)(y, self.y_src)

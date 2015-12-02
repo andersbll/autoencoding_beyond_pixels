@@ -70,6 +70,17 @@ class NegativeGradient(expr.base.UnaryElementWise):
         ca.negative(self.out_grad, self.x.out_grad)
 
 
+class ScaleGradient(expr.base.UnaryElementWise):
+    def __init__(self, scale):
+        self.scale = scale
+
+    def fprop(self):
+        self.out = self.x.out
+
+    def bprop(self):
+        ca.multiply(self.out_grad, self.scale, self.x.out_grad)
+
+
 class SquareError(expr.base.Expr):
     def __call__(self, y, y_pred):
         return (y_pred - y)**2
@@ -80,18 +91,45 @@ class AbsError(expr.base.Expr):
         return expr.fabs(y_pred - y)
 
 
-class VAEGAN(dp.base.Model):
-    def __init__(self, encoder, sampler, generator, discriminator, mode):
+class WeightedParameter(dp.Parameter):
+    def __init__(self, parameter, weight):
+        self.__dict__ = parameter.__dict__
+        self.weight = weight
+
+    def grad(self):
+        grad = self.grad_array
+        grad *= self.weight
+        for param in self.shares:
+            grad -= param.grad_array
+        grad = self._add_penalty(grad)
+        return grad
+
+
+class VAEGAN(dp.base.Model, dp.base.CollectionMixin):
+    def __init__(self, encoder, sampler, generator, discriminator, mode,
+                 vae_grad_scale=1.0, kld_weight=1.0, z_gan_prop=False):
         self.encoder = encoder
         self.sampler = sampler
-        self.generator = generator
         self.mode = mode
         self.discriminator = discriminator
+        self.vae_grad_scale = vae_grad_scale
+        self.kld_weight = kld_weight
         self.eps = 1e-4
+        self.hidden_std = 1.0
+        self.z_gan_prop = z_gan_prop
         self.recon_error = SquareError()
+        generator.params = [p.parent if isinstance(p, WeightedParameter) else p
+                            for p in generator.params]
         if self.mode == 'vaegan':
+            generator.params = [WeightedParameter(p, vae_grad_scale)
+                                for p in generator.params]
             self.generator_neg = deepcopy(generator)
             self.generator_neg.params = [p.share() for p in generator.params]
+        if self.mode == 'gan':
+            generator.params = [WeightedParameter(p, -1.0)
+                                for p in generator.params]
+        self.generator = generator
+        self.collection = [self.encoder, self.sampler, self.generator, self.discriminator]
 
     def _embed_expr(self, x):
         h_enc = self.encoder(x)
@@ -110,10 +148,12 @@ class VAEGAN(dp.base.Model):
         if self.mode in ['vae', 'vaegan']:
             h_enc = self.encoder(self.x_src)
             z, z_mu, z_log_sigma, z_eps = self.sampler(h_enc)
+            if isinstance(self.hidden_std, float) and self.hidden_std != 1.0:
+                z_eps = z_eps*self.hidden_std
             self.kld = KLDivergence()(z_mu, z_log_sigma)
+            if self.kld_weight != 1.0:
+                self.kld = self.kld_weight*self.kld
             x_tilde = self.generator(z)
-#            if self.mode == 'vaegan':
-#                x_tilde = ScaleGradient()(x_tilde)
             self.logpxz = self.recon_error(x_tilde, self.x_src)
             loss = self.kld + expr.sum(self.logpxz)
 
@@ -121,13 +161,12 @@ class VAEGAN(dp.base.Model):
             if self.mode == 'gan':
                 z = self.sampler.samples()
                 x_tilde = self.generator(z)
-                x_tilde = NegativeGradient()(x_tilde)
                 gen_size = batch_size
             elif self.mode == 'vaegan':
-                z = NegativeGradient()(z)
+                if not self.z_gan_prop:
+                    z = ScaleGradient(0.0)(z)
                 z = expr.Concatenate(axis=0)(z, z_eps)
                 x_tilde = self.generator_neg(z)
-                x_tilde = NegativeGradient()(x_tilde)
                 gen_size = batch_size*2
             x = expr.Concatenate(axis=0)(self.x_src, x_tilde)
             d = self.discriminator(x)

@@ -16,10 +16,11 @@ def affine(n_out, gain):
     return expr.nnet.Affine(n_out=n_out, weights=dp.AutoFiller(gain))
 
 
-def conv(n_filters, filter_size, gain=1.0):
+def conv(n_filters, filter_size, stride=1, gain=1.0):
     return expr.nnet.Convolution(
-        n_filters=n_filters, strides=(1, 1), weights=dp.AutoFiller(gain),
-        filter_shape=(filter_size, filter_size), border_mode='same',
+        n_filters=n_filters, strides=(stride, stride),
+        weights=dp.AutoFiller(gain), filter_shape=(filter_size, filter_size),
+        border_mode='same',
     )
 
 
@@ -84,23 +85,22 @@ def model_expressions(img_shape):
         conv(n_channels, 3, gain=gain),
     ])
     discriminator = cond_vaegan.ConditionalSequential([
-        conv(32, 5, gain=gain),
-        pool(),
+        conv(32, 5, stride=2, gain=gain),
         expr.nnet.ReLU(),
         expr.nnet.SpatialDropout(0.2),
-        conv(64, 5, gain=gain),
-        pool(),
+        conv(64, 5, stride=2, gain=gain),
         expr.nnet.ReLU(),
         expr.nnet.SpatialDropout(0.2),
         conv(96, 3, gain=gain),
-        expr.nnet.ReLU(),
-        expr.nnet.SpatialDropout(0.2),
         expr.Reshape((-1, 96*8*8)),
-        expr.Concatenate(axis=1),
-        affine(n_discriminator, gain),
-        expr.nnet.ReLU(),
-        expr.nnet.Dropout(0.5),
-        affine(1, gain),
+#        expr.nnet.ReLU(),
+#        expr.nnet.SpatialDropout(0.2),
+#        expr.Reshape((-1, 96*8*8)),
+#        expr.Concatenate(axis=1),
+#        affine(n_discriminator, gain),
+##        expr.nnet.ReLU(),
+##        expr.nnet.Dropout(0.5),
+##        affine(1, gain),
         expr.nnet.Sigmoid(),
     ])
     return encoder, sampler, generator, discriminator
@@ -112,7 +112,7 @@ def clip_range(imgs):
 
 def run():
     mode = 'gan'
-    experiment_name = mode
+    experiment_name = mode + '_stride_local_discrimination'
     filename = 'savestates/cifar_cond_' + experiment_name + '.pickle'
     in_filename = filename
     in_filename = None
@@ -181,9 +181,12 @@ def run():
 
     # Train network
     runs = [
-        (150, dp.RMSProp(learn_rate=0.1)),
-        (150, dp.RMSProp(learn_rate=0.08)),
+#        (10, dp.RMSProp(learn_rate=0.08)),
+#        (25, dp.RMSProp(learn_rate=0.12)),
+#        (100, dp.RMSProp(learn_rate=0.1)),
+        (150, dp.RMSProp(learn_rate=0.075)),
         (150, dp.RMSProp(learn_rate=0.06)),
+        (150, dp.RMSProp(learn_rate=0.05)),
         (150, dp.RMSProp(learn_rate=0.04)),
         (25, dp.RMSProp(learn_rate=0.01)),
     ]

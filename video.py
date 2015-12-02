@@ -32,7 +32,10 @@ class Video(object):
         self.fps = fps
         self.bitrate = bitrate
         self.dump_imgs = dump_imgs
-        self.disable_video = True if which('ffmpeg') is None else False
+        if which('ffmpeg') is None and which('avconv') is None:
+            self.disable_video = True
+        else:
+            self.disable_video = False
         dirpath = os.path.split(filename)[0]
         if dirpath and not os.path.exists(dirpath):
             os.makedirs(dirpath)
@@ -49,8 +52,12 @@ class Video(object):
             pix_fmt = 'rgb24'
         else:
             pix_fmt = 'gray'
+        if which('ffmpeg') is None:
+            encoder = 'avconv'
+        else:
+            encoder = 'ffmpeg'
         cmd = [
-            'ffmpeg',
+            encoder,
             '-y',
             '-loglevel', 'error',
             '-f', 'rawvideo',
@@ -71,6 +78,10 @@ class Video(object):
             frame -= np.min(frame)
             frame /= np.max(frame)/255.
             frame = frame.astype(np.uint8)
+        if frame.shape[0] % 2 != 0:
+            frame = np.insert(frame, frame.shape[0], 0, axis=0)
+        if frame.shape[1] % 2 != 0:
+            frame = np.insert(frame, frame.shape[1], 0, axis=1)
         if self.dump_imgs:
             img_path = os.path.join(self.imgs_dir, '%.5d.png' % self.n_frames)
             scipy.misc.imsave(img_path, frame)
