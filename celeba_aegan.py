@@ -17,19 +17,22 @@ def run():
     img_size = 64
     epoch_size = 250
     batch_size = 64
-    train_input, test_input = dataset.celeba.inputs(
+    n_augment = int(6e5)
+    train_feed, test_feed = dataset.celeba.feeds(
         img_size, split='test', batch_size=batch_size, epoch_size=epoch_size,
-        n_augment=int(6e5),
+        n_augment=n_augment,
     )
     n_hidden = 128
     model, experiment_name = aegan.build_model(
         experiment_name, img_size, n_hidden=n_hidden, recon_depth=9,
-        recon_vs_gan_weight=1e-5, real_vs_gen_weight=0.66,
+        recon_vs_gan_weight=1e-6, real_vs_gen_weight=0.5,
+        discriminate_ae_recon=False, discriminate_sample_z=True,
     )
     print('experiment_name: %s' % experiment_name)
     output_dir = os.path.join('out', experiment_name)
     aegan.train(
-        model, output_dir, train_input, test_input,
+        model, output_dir, train_feed, test_feed, n_epochs=250,
+        lr_start=0.025,
     )
     model_path = os.path.join(output_dir, 'arch.pickle')
     print('Saving model to disk')
@@ -39,14 +42,14 @@ def run():
 
     print('Extracting visual attribute vectors')
     model.phase = 'test'
-    train_input, test_input = dataset.celeba.inputs(
+    train_feed, test_feed = dataset.celeba.feeds(
         img_size, batch_size=batch_size, epoch_size=epoch_size,
         with_attributes=True, split='test',
     )
 
     n_attr_imgs = 10000
-    x = img_transform(train_input.x[:n_attr_imgs], to_bc01=False)
-    y = train_input.y[:n_attr_imgs]
+    x = img_transform(train_feed.x[:n_attr_imgs], to_bc01=False)
+    y = train_feed.y[:n_attr_imgs]
     z = model.encode(x)
 
     all_attributes = list(dp.dataset.CelebA().attribute_names)
@@ -66,7 +69,7 @@ def run():
         attr_vecs.append(vec)
 
     print('Outputting visual attribute vectors')
-    original_x = np.array(test_input.batches().next()['x'])
+    original_x = test_feed.batches().next()[0]
     original_z = model.encode(original_x)
     attributes_dir = os.path.join(output_dir, 'attributes')
     if not os.path.exists(attributes_dir):

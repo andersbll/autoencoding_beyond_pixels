@@ -4,8 +4,8 @@ import deeppy as dp
 from skimage import transform
 import joblib
 
-from .augment import (img_augment, sample_img_augment_params, AugmentedInput)
-from .util import img_transform, ShuffledSupervisedInput
+from .augment import (img_augment, sample_img_augment_params, AugmentedFeed)
+from .util import img_transform, ShuffledSupervisedFeed
 
 
 cachedir = os.getenv('CACHE_HOME', './cache')
@@ -71,22 +71,22 @@ def resize_imgs(imgs, rescale_size, n_augment=0):
 
 
 @mem.cache
-def unlabeled_input(img_size, batch_size=128, epoch_size=250,
-                    n_augment=0):
+def unlabeled_feed(img_size, batch_size=128, epoch_size=250,
+                   n_augment=0):
     x_unlabeled, _ = arrays('unlabeled')
     x_unlabeled = resize_imgs(x_unlabeled, img_size, n_augment)
     if n_augment == 0:
         x_unlabeled = img_transform(x_unlabeled, to_bc01=True)
-        unlabeled_input = dp.Input(x_unlabeled, batch_size=batch_size,
-                                   epoch_size=epoch_size)
+        unlabeled_feed = dp.Feed(x_unlabeled, batch_size=batch_size,
+                                 epoch_size=epoch_size)
     else:
         x_unlabeled = np.transpose(x_unlabeled, (0, 3, 1, 2))
-        unlabeled_input = AugmentedInput(x_unlabeled, batch_size=batch_size,
-                                         epoch_size=epoch_size)
-    return unlabeled_input
+        unlabeled_feed = AugmentedFeed(x_unlabeled, batch_size=batch_size,
+                                       epoch_size=epoch_size)
+    return unlabeled_feed
 
 
-def supervised_input(img_size, batch_size=128, epoch_size=250, val_fold=None):
+def supervised_feed(img_size, batch_size=128, epoch_size=250, val_fold=None):
     x_train, y_train = arrays('train')
     x_test, y_test = arrays('test')
     x_train = resize_imgs(x_train, img_size)
@@ -95,8 +95,8 @@ def supervised_input(img_size, batch_size=128, epoch_size=250, val_fold=None):
     x_test = img_transform(x_test, to_bc01=True)
 
     # TODO use folds
-    train_input = ShuffledSupervisedInput(
+    train_feed = ShuffledSupervisedFeed(
         x_train, y_train, batch_size=batch_size, epoch_size=epoch_size
     )
-    test_input = dp.SupervisedInput(x_test, y_test, batch_size=batch_size)
-    return train_input, test_input
+    test_feed = dp.SupervisedFeed(x_test, y_test, batch_size=batch_size)
+    return train_feed, test_feed

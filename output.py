@@ -6,19 +6,27 @@ import deeppy as dp
 from video import Video
 
 
-def random_walk(start_pos, n_steps, n_dir_steps=10, change_fraction=1.0):
+def _norm(arr):
+    return np.sqrt(np.sum(arr**2, axis=1, keepdims=True))
+
+
+def random_walk(start_pos, n_shifts=15, n_steps_per_shift=10,
+                change_beta_a=0.25, change_beta_b=0.25):
     pos = np.copy(start_pos)
-    for i in range(n_steps):
-        if i % n_dir_steps == 0:
-            next_point = np.random.normal(size=pos.shape)
-            if change_fraction < 1.0:
-                mask = np.random.uniform(low=0, high=1, size=pos.shape)
-                mask = mask < change_fraction
-                next_point[mask] = pos[mask]
+    for shift_idx in range(n_shifts):
+        norm = _norm(pos)
+        next_point = np.random.normal(size=pos.shape)
+        next_norm = _norm(next_point)
+        weights = np.random.beta(change_beta_a, change_beta_b, size=pos.shape)
+        next_point = pos*(1.0 - weights) + next_point*weights
+        next_point *= next_norm / _norm(next_point)
+        for step_idx in range(n_steps_per_shift):
             step = (next_point - pos)
-            step /= n_dir_steps
-        pos += step
-        yield pos
+            pos += step / (n_steps_per_shift - step_idx)
+            norm_step = (next_norm - norm)
+            norm += norm_step / (n_steps_per_shift - step_idx)
+            pos *= norm / _norm(pos)
+            yield pos
 
 
 def samples(model, samples_z, out_dir, inv_transform=None):
@@ -54,7 +62,7 @@ def walk(model, samples_z, out_dir, inv_transform=None):
     print('Outputting walk video')
     model.phase = 'test'
     walk_video = Video(os.path.join(out_dir, 'walk.mp4'))
-    for z in random_walk(samples_z, 150, n_dir_steps=10, change_fraction=0.1):
+    for z in random_walk(samples_z):
         x = model.decode(z)
         if inv_transform is not None:
             x = inv_transform(x)

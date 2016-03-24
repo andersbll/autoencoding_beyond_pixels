@@ -4,8 +4,8 @@ import joblib
 from skimage import transform, filters
 import deeppy as dp
 
-from .augment import (img_augment, sample_img_augment_params, AugmentedInput,
-                      SupervisedAugmentedInput)
+from .augment import (img_augment, sample_img_augment_params, AugmentedFeed,
+                      SupervisedAugmentedFeed)
 from .util import img_transform
 
 
@@ -62,8 +62,8 @@ def celeba_imgs(img_size=64, bbox=(40, 218-30, 15, 178-15), img_idxs=None,
     return imgs
 
 
-def inputs(img_size, batch_size, epoch_size, n_augment=int(6e5),
-           with_attributes=False, split='val'):
+def feeds(img_size, batch_size, epoch_size, n_augment=int(6e5),
+          with_attributes=False, split='val'):
     dataset = dp.dataset.CelebA()
     if split == 'val':
         train_idxs = dataset.train_idxs
@@ -82,14 +82,14 @@ def inputs(img_size, batch_size, epoch_size, n_augment=int(6e5),
         y_train = y_train[np.arange(n_augment) % len(y_train)]
 
     if with_attributes:
-        train_input = SupervisedAugmentedInput(
+        train_feed = SupervisedAugmentedFeed(
             x_train, y_train, batch_size=batch_size, epoch_size=epoch_size
         )
-        test_input = dp.SupervisedInput(
+        test_feed = dp.SupervisedFeed(
             x_test, y_test, batch_size=batch_size
         )
     else:
-        train_input = AugmentedInput(x_train, batch_size, epoch_size)
-        test_input = dp.Input(x_test, batch_size)
+        train_feed = AugmentedFeed(x_train, batch_size, epoch_size)
+        test_feed = dp.Feed(x_test, batch_size)
 
-    return train_input, test_input
+    return train_feed, test_feed

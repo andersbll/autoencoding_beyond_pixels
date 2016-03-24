@@ -55,7 +55,7 @@ def img_augment(img, translation=0.0, scale=1.0, rotation=0.0, gamma=1.0,
     return img
 
 
-class AugmentedInput(dp.Input):
+class AugmentedFeed(dp.Feed):
     def batches(self):
         x = ca.empty(self.x_shape, dtype=dp.float_)
         for start, stop in self._batch_slices():
@@ -68,10 +68,10 @@ class AugmentedInput(dp.Input):
             x_np = img_transform(x_np, to_bc01=False)
             x_np = np.ascontiguousarray(x_np)
             ca.copyto(x, x_np)
-            yield {'x': x}
+            yield x,
 
 
-class SupervisedAugmentedInput(dp.SupervisedInput):
+class SupervisedAugmentedFeed(dp.SupervisedFeed):
     def batches(self):
         x = ca.empty(self.x_shape, dtype=dp.float_)
         y = ca.empty(self.y_shape, dtype=dp.float_)
@@ -88,4 +88,4 @@ class SupervisedAugmentedInput(dp.SupervisedInput):
             x_np = np.ascontiguousarray(x_np)
             ca.copyto(x, x_np)
             ca.copyto(y, y_np)
-            yield {'x': x, 'y': y}
+            yield x, y

@@ -4,8 +4,8 @@ import joblib
 from skimage import transform
 import deeppy as dp
 
-from .augment import (img_augment, sample_img_augment_params, AugmentedInput,
-                      SupervisedAugmentedInput)
+from .augment import (img_augment, sample_img_augment_params, AugmentedFeed,
+                      SupervisedAugmentedFeed)
 from .util import img_transform
 
 
@@ -116,8 +116,8 @@ def resize_imgs(imgs, crop_size, rescale_size, n_augment=0):
 
 
 @mem.cache
-def inputs(alignment, crop_size, rescale_size, batch_size, epoch_size,
-           n_augment=int(1e5), with_attributes=False, split='val'):
+def feeds(alignment, crop_size, rescale_size, batch_size, epoch_size,
+          n_augment=int(1e5), with_attributes=False, split='val'):
     if split == 'val':
         train_split = 'valtrain'
         test_split = 'val'
@@ -141,14 +141,14 @@ def inputs(alignment, crop_size, rescale_size, batch_size, epoch_size,
     x_test = img_transform(x_test, to_bc01=True)
 
     if with_attributes:
-        train_input = SupervisedAugmentedInput(
+        train_feed = SupervisedAugmentedFeed(
             x_train, y_train, batch_size=batch_size, epoch_size=epoch_size
         )
-        test_input = dp.SupervisedInput(
+        test_feed = dp.SupervisedFeed(
             x_test, y_test, batch_size=batch_size
         )
     else:
-        train_input = AugmentedInput(x_train, batch_size, epoch_size)
-        test_input = dp.Input(x_test, batch_size)
+        train_feed = AugmentedFeed(x_train, batch_size, epoch_size)
+        test_feed = dp.Feed(x_test, batch_size)
 
-    return train_input, test_input
+    return train_feed, test_feed

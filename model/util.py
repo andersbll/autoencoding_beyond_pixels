@@ -1,17 +1,17 @@
 import cudarray as ca
 import deeppy as dp
-import deeppy.expr as expr
+import deeppy.expr as ex
 
 
-class ScaleGradient(expr.base.UnaryElementWise):
+class ScaleGradient(ex.base.UnaryElementWise):
     def __init__(self, scale):
         self.scale = scale
 
     def fprop(self):
-        self.out = self.x.out
+        self.array = self.x.array
 
     def bprop(self):
-        ca.multiply(self.out_grad, self.scale, self.x.out_grad)
+        ca.multiply(self.grad_array, self.scale, self.x.grad_array)
 
 
 class WeightedParameter(dp.Parameter):

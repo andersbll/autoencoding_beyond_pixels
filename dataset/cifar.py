@@ -3,7 +3,7 @@ import numpy as np
 import deeppy as dp
 import joblib
 
-from .util import img_transform, ShuffledInput, ShuffledSupervisedInput
+from .util import img_transform, ShuffledFeed, ShuffledSupervisedFeed
 
 cachedir = os.getenv('CACHE_HOME', './cache')
 mem = joblib.Memory(cachedir=os.path.join(cachedir, 'cifar'))
@@ -52,19 +52,19 @@ def arrays(split='test'):
     return x_train, y_train, x_val, y_val, x_test, y_test
 
 
-def inputs(split='test', batch_size=128, epoch_size=None, preprocessing='',
-           augmentation='', supervised=False):
+def feeds(split='test', batch_size=128, epoch_size=None, preprocessing='',
+          augmentation='', supervised=False):
     x_train, y_train, x_val, y_val, x_test, y_test = arrays(split)
     if supervised:
-        train_input = ShuffledSupervisedInput(
+        train_feed = ShuffledSupervisedFeed(
             x_train, y_train, batch_size=batch_size, epoch_size=epoch_size
         )
-        val_input = dp.SupervisedInput(x_val, y_val, batch_size=batch_size)
-        test_input = dp.SupervisedInput(x_test, y_test, batch_size=batch_size)
+        val_feed = dp.SupervisedFeed(x_val, y_val, batch_size=batch_size)
+        test_feed = dp.SupervisedFeed(x_test, y_test, batch_size=batch_size)
     else:
-        train_input = ShuffledInput(
+        train_feed = ShuffledFeed(
             x_train, batch_size=batch_size, epoch_size=epoch_size
         )
-        val_input = dp.Input(x_val, batch_size=batch_size)
-        test_input = dp.Input(x_test, batch_size=batch_size)
-    return train_input, val_input, test_input
+        val_feed = dp.Feed(x_val, batch_size=batch_size)
+        test_feed = dp.Feed(x_test, batch_size=batch_size)
+    return train_feed, val_feed, test_feed

@@ -1,7 +1,7 @@
 import numpy as np
 import cudarray as ca
 import deeppy as dp
-import deeppy.expr as expr
+import deeppy.expr as ex
 
 from util import ScaleGradient, WeightedParameter
 
@@ -23,10 +23,10 @@ class GAN(dp.base.Model, dp.base.CollectionMixin):
 
     def setup(self, x_shape):
         batch_size = x_shape[0]
-        self.x_src = expr.Source(x_shape)
-        z = expr.random.normal(size=(batch_size, self.n_hidden))
+        self.x_src = ex.Source(x_shape)
+        z = ex.random.normal(size=(batch_size, self.n_hidden))
         x_tilde = self.generator(z)
-        x = expr.Concatenate(axis=0)(self.x_src, x_tilde)
+        x = ex.Concatenate(axis=0)(self.x_src, x_tilde)
         if self.real_vs_gen_weight != 0.5:
             # Scale gradients to balance real vs. generated contributions to
             # GAN discriminator
@@ -47,10 +47,11 @@ class GAN(dp.base.Model, dp.base.CollectionMixin):
         sign[batch_size:] = -1.0
         offset = np.zeros_like(sign)
         offset[batch_size:] = 1.0
-        self.gan_loss = expr.log(d*sign + offset + self.eps)
-        self._graph = expr.ExprGraph(-expr.sum(self.gan_loss))
-        self._graph.out_grad = ca.array(1.0)
+        self.gan_loss = ex.log(d*sign + offset + self.eps)
+        self.loss = ex.sum(self.gan_loss)
+        self._graph = ex.graph.ExprGraph(self.loss)
         self._graph.setup()
+        self.loss.grad_array = ca.array(-1.0)
 
     @property
     def params(self):
@@ -59,44 +60,44 @@ class GAN(dp.base.Model, dp.base.CollectionMixin):
         return gen_params, dis_params
 
     def update(self, x):
-        self.x_src.out = x
+        self.x_src.array = x
         self._graph.fprop()
         self._graph.bprop()
         d_x_loss = 0
         d_z_loss = 0
-        gan_loss = -np.array(self.gan_loss.out)
+        gan_loss = -np.array(self.gan_loss.array)
         batch_size = x.shape[0]
         d_x_loss = float(np.mean(gan_loss[:batch_size]))
         d_z_loss = float(np.mean(gan_loss[batch_size:]))
         return d_x_loss, d_z_loss
 
-    def _batchwise(self, input, expr_fun):
-        input = dp.input.Input.from_any(input)
-        src = expr.Source(input.x_shape)
-        graph = expr.ExprGraph(expr_fun(src))
+    def _batchwise(self, feed, expr_fun):
+        feed = dp.Feed.from_any(feed)
+        src = ex.Source(feed.x_shape)
+        sink = expr_fun(src)
+        graph = ex.graph.ExprGraph(sink)
         graph.setup()
         z = []
-        for x_batch in input.batches():
-            src.out = x_batch['x']
+        for x, in feed.batches():
+            src.array = x
             graph.fprop()
-            z.append(np.array(graph.out))
-        z = np.concatenate(z)[:input.n_samples]
+            z.append(np.array(sink.array))
+        z = np.concatenate(z)[:feed.n_samples]
         return z
 
-    def decode(self, input):
-        """ Hidden to input. """
-        return self._batchwise(input, self._generate_expr)
+    def decode(self, feed):
+        return self._batchwise(feed, self._generate_expr)
 
 
 class GradientDescent(dp.GradientDescent):
-    def __init__(self, model, input, learn_rule, margin=0.4, equilibrium=0.68):
-        super(GradientDescent, self).__init__(model, input, learn_rule)
+    def __init__(self, model, feed, learn_rule, margin=0.4, equilibrium=0.68):
+        super(GradientDescent, self).__init__(model, feed, learn_rule)
         self.margin = margin
         self.equilibrium = equilibrium
 
     def reset(self):
-        self.input.reset()
-        self.model.setup(**self.input.shapes)
+        self.feed.reset()
+        self.model.setup(*self.feed.shapes)
         self.params_gen, self.params_dis = self.model.params
 
         def states(params):
@@ -107,8 +108,8 @@ class GradientDescent(dp.GradientDescent):
 
     def train_epoch(self):
         batch_costs = []
-        for batch in self.input.batches():
-            real_cost, fake_cost = self.model.update(**batch)
+        for batch in self.feed.batches():
+            real_cost, fake_cost = self.model.update(*batch)
             batch_costs.append((real_cost, fake_cost))
             gen_update = True
             dis_update = True

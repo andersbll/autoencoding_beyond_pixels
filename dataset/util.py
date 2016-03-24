@@ -139,9 +139,9 @@ class ShuffleMixin(object):
             yield batch
 
 
-class ShuffledInput(dp.Input, ShuffleMixin):
+class ShuffledFeed(dp.Feed, ShuffleMixin):
     pass
 
 
-class ShuffledSupervisedInput(dp.SupervisedInput, ShuffleMixin):
+class ShuffledSupervisedFeed(dp.SupervisedFeed, ShuffleMixin):
     pass

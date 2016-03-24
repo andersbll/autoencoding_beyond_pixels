@@ -15,7 +15,7 @@ def run():
     epoch_size = 250
     batch_size = 64
     np.random.seed(1)
-    train_input, test_input = dataset.lfw.inputs(
+    train_feed, test_feed = dataset.lfw.feeds(
         alignment='landmarks', crop_size=150, rescale_size=img_size,
         batch_size=batch_size, epoch_size=epoch_size, n_augment=250000,
         split='test',
@@ -23,13 +23,14 @@ def run():
 
     model, experiment_name = aegan.build_model(
         experiment_name, img_size, n_hidden=128, recon_depth=9,
-        recon_vs_gan_weight=1e-5, real_vs_gen_weight=0.66,
+        recon_vs_gan_weight=1e-6, real_vs_gen_weight=0.33,
+        discriminate_ae_recon=False, discriminate_sample_z=True,
     )
     print('experiment_name: %s' % experiment_name)
 
     output_dir = os.path.join('out', experiment_name)
     aegan.train(
-        model, output_dir, train_input, test_input,
+        model, output_dir, train_feed, test_feed,
     )
     model_path = os.path.join(output_dir, 'arch.pickle')
     print('Saving model to disk')

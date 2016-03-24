@@ -71,21 +71,20 @@ def run():
     x_train = mnist_transform(x_train)
     x_test = mnist_transform(x_test)
 
-    # Prepare network inputs
-    train_input = dp.Input(x_train, batch_size, epoch_size)
-    test_input = dp.Input(x_test, batch_size)
+    # Prepare network feeds
+    train_feed = dp.Feed(x_train, batch_size, epoch_size)
+    test_feed = dp.Feed(x_test, batch_size)
 
     # Plotting
     n_examples = 64
-    batch = test_input.batches().next()
-    original_x = batch['x']
+    original_x, = test_feed.batches().next()
     original_x = np.array(original_x)[:n_examples]
     samples_z = np.random.normal(size=(n_examples, n_hidden))
     samples_z = (samples_z).astype(dp.float_)
 
     # Train network
     learn_rule = dp.RMSProp()
-    trainer = gan.GradientDescent(model, train_input, learn_rule,
+    trainer = gan.GradientDescent(model, train_feed, learn_rule,
                                   margin=gan_margin)
     annealer = dp.GammaAnnealer(lr_start, lr_stop, n_epochs, gamma=lr_gamma)
     try:
@@ -94,7 +93,7 @@ def run():
                        dp.misc.img_tile(mnist_inverse_transform(original_x)))
         for e in range(n_epochs):
             model.phase = 'train'
-            model.setup(**train_input.shapes)
+            model.setup(*train_feed.shapes)
             learn_rule.learn_rate = annealer.value(e) / batch_size
             trainer.train_epoch()
 
